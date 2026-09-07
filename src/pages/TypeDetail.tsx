@@ -1,6 +1,7 @@
 import EmptyState from "@/components/EmptyState";
 import PeriodSelector from "@/components/PeriodSelector";
 import { useTranslation } from "@/lib/i18n";
+import { classifyFlow } from "@/lib/flow";
 import { fromRange, periodRange, type Period } from "@/lib/period";
 import { getShareScope, getUserOwners, type SpaceOwnerSummary } from "@/lib/shared";
 import { sessionData } from "@/lib/sessionState";
@@ -78,7 +79,7 @@ export default function TypeDetail() {
           .select(
             "*, profiles(name, color, avatar_url), categories(name, color, type, user_id), accounts!transactions_account_id_fkey(id, user_id, name, icon, color, type), to_accounts: accounts!transactions_to_account_id_fkey(id, user_id, name, icon, color, type)",
           )
-          .eq("type", type)
+          .in("type", ["income", "expense", "transfer"])
           .in("space_id", scopeIds)
           .order("date", { ascending: false });
         if (from) query = query.gte("date", from);
@@ -91,7 +92,17 @@ export default function TypeDetail() {
             .select("id, user_id, name, icon, color, type"),
           getUserOwners(),
         ]);
-        const rowData = txRes.data ?? [];
+        const accData = accRes.data ?? [];
+        const accById = new Map(accData.map((a) => [a.id, a]));
+        const rowData = (txRes.data ?? []).filter((tx) => {
+          const { isIncome, isExpense } = classifyFlow(tx, {
+            currentUserId: profile?.id,
+            isShared: hasOtherMembers,
+            allowedAccounts: allowedSet,
+            getAccount: (id) => accById.get(id),
+          });
+          return type === "income" ? isIncome : isExpense;
+        });
         const filteredData = hasOtherMembers && allowedSet.size
           ? rowData.filter(
               (tx) =>
@@ -99,7 +110,6 @@ export default function TypeDetail() {
                 (tx.to_account_id && allowedSet.has(tx.to_account_id)),
             )
           : rowData;
-        const accData = accRes.data ?? [];
         sessionData.set(`type-detail:${type}:${spaceId}:${period}`, {
           transactions: filteredData,
           accounts: accData,

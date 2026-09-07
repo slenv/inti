@@ -8,6 +8,7 @@ import PhotoLightbox from "@/components/PhotoLightbox";
 import SwipeableRow from "@/components/SwipeableRow";
 import { finishProgress, startProgress } from "@/components/TopProgress";
 import { downloadCsv, exportPdf, toCsv } from "@/lib/export";
+import { computeFlowTotals } from "@/lib/flow";
 import { useTranslation } from "@/lib/i18n";
 import { sessionData } from "@/lib/sessionState";
 import { supabase } from "@/lib/supabase";
@@ -316,18 +317,22 @@ export default function Transactions() {
     return true;
   });
 
-  const totalIncome = filtered
-    .filter((tx) => tx.type === "income")
-    .reduce((s, tx) => s + Number(tx.amount), 0);
-  const totalExpense = filtered
-    .filter((tx) => tx.type === "expense")
-    .reduce((s, tx) => s + Number(tx.amount), 0);
+  const isSharedSpace = hasOtherMembers;
+  const accountsById = new Map(allAccounts.map((a) => [a.id, a]));
+  const { income: totalIncome, expense: totalExpense } = computeFlowTotals(
+    filtered,
+    {
+      currentUserId: profile?.id,
+      isShared: isSharedSpace,
+      allowedAccounts,
+      getAccount: (id) => accountsById.get(id),
+    },
+  );
 
   // Balance total: mismo criterio que el Home. Se calcula el saldo por cuenta
   // (las transfers restan del origen y suman al destino) y se suman las cuentas
   // propias (o permitidas si es un espacio compartido). Así, mover plata de un
   // lado a otro no cambia el total.
-  const isSharedSpace = hasOtherMembers;
   const balanceTotal = useMemo(() => {
     const map: Record<string, number> = {};
     filtered.forEach((tx) => {

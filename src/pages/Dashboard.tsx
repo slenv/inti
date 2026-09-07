@@ -26,6 +26,7 @@ import {
   groupByUser,
   type SpaceOwnerSummary,
 } from "@/lib/shared";
+import { computeFlowTotals } from "@/lib/flow";
 import { sessionData } from "@/lib/sessionState";
 import { supabase } from "@/lib/supabase";
 import { useAppStore } from "@/store/useAppStore";
@@ -292,20 +293,20 @@ export default function Dashboard() {
     );
   }, [transactions, periodBounds]);
 
-  const totalIncome = useMemo(
-    () =>
-      periodTx
-        .filter((tx) => tx.type === "income")
-        .reduce((sum, tx) => sum + Number(tx.amount), 0),
-    [periodTx],
+  const accountsById = useMemo(
+    () => new Map(accounts.map((a) => [a.id, a])),
+    [accounts],
   );
 
-  const totalExpense = useMemo(
+  const { income: totalIncome, expense: totalExpense } = useMemo(
     () =>
-      periodTx
-        .filter((tx) => tx.type === "expense")
-        .reduce((sum, tx) => sum + Number(tx.amount), 0),
-    [periodTx],
+      computeFlowTotals(periodTx, {
+        currentUserId: profile?.id,
+        isShared,
+        allowedAccounts,
+        getAccount: (id) => accountsById.get(id),
+      }),
+    [periodTx, profile?.id, isShared, allowedAccounts, accountsById],
   );
 
   const accountBalances = useMemo(() => {
@@ -336,11 +337,6 @@ export default function Dashboard() {
   const accountGroups = useMemo(
     () => groupByUser(homeAccountBalances, ownersById, profile?.id),
     [homeAccountBalances, ownersById, profile?.id],
-  );
-
-  const accountsById = useMemo(
-    () => new Map(accounts.map((a) => [a.id, a])),
-    [accounts],
   );
 
   const donutData = useMemo(() => {
@@ -392,20 +388,22 @@ export default function Dashboard() {
           d.getFullYear() === monthDate.getFullYear()
         );
       });
+      const { income, expense } = computeFlowTotals(monthTx, {
+        currentUserId: profile?.id,
+        isShared,
+        allowedAccounts,
+        getAccount: (id) => accountsById.get(id),
+      });
       months.push({
         month: format(monthDate, "MMM", {
           locale: locale === "es" ? esLocale : undefined,
         }),
-        income: monthTx
-          .filter((tx) => tx.type === "income")
-          .reduce((s, tx) => s + Number(tx.amount), 0),
-        expense: monthTx
-          .filter((tx) => tx.type === "expense")
-          .reduce((s, tx) => s + Number(tx.amount), 0),
+        income,
+        expense,
       });
     }
     return months;
-  }, [transactions, locale]);
+  }, [transactions, locale, profile?.id, isShared, allowedAccounts, accountsById]);
 
   const currency = activeSpace?.currency ?? "PEN";
 
@@ -909,6 +907,41 @@ export function AccountMiniIcon({
   );
 }
 
+function OtherUserBadge({
+  owner,
+  fallback,
+}: {
+  owner?: SpaceOwnerSummary;
+  fallback: string;
+}) {
+  return (
+    <span
+      title={owner ? fallback + ": " + owner.name : fallback}
+      className="shrink-0 inline-flex items-center gap-0.5 pl-1 pr-1 rounded-full text-[10px] font-semibold"
+      style={{
+        color: owner?.color ?? "#6B7280",
+        backgroundColor: (owner?.color ?? "#6B7280") + "1A",
+      }}
+    >
+      {owner?.avatar_url ? (
+        <img
+          src={owner.avatar_url}
+          alt=""
+          className="w-3.5 h-3.5 rounded-full object-cover shrink-0"
+        />
+      ) : (
+        <span
+          className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[8px] font-bold shrink-0"
+          style={{ backgroundColor: owner?.color ?? "#6B7280" }}
+        >
+          {owner?.name?.charAt(0).toUpperCase() ?? "?"}
+        </span>
+      )}
+      {owner ? owner.name : fallback}
+    </span>
+  );
+}
+
 export function TransactionRow({
   tx,
   currency,
@@ -934,6 +967,10 @@ export function TransactionRow({
 
   const fromAccount = tx.accounts ?? accountsById?.get(tx.account_id);
   const toAccount = tx.to_accounts ?? accountsById?.get(tx.to_account_id);
+  const fromIsOtherUser =
+    isTransfer &&
+    !!fromAccount?.user_id &&
+    fromAccount.user_id !== currentUserId;
   const toIsOtherUser =
     isTransfer &&
     !!toAccount?.user_id &&
@@ -941,6 +978,10 @@ export function TransactionRow({
   const toOwner =
     toIsOtherUser && toAccount?.user_id
       ? ownersById?.get(toAccount.user_id)
+      : undefined;
+  const fromOwner =
+    fromIsOtherUser && fromAccount?.user_id
+      ? ownersById?.get(fromAccount.user_id)
       : undefined;
 
   const title = isTransfer
@@ -996,34 +1037,20 @@ export function TransactionRow({
             <span className="flex items-center gap-1 min-w-0 truncate">
               <AccountMiniIcon account={fromAccount} size={11} />
               <span className="truncate">{fromAccount.name}</span>
+              {fromIsOtherUser && (
+                <OtherUserBadge
+                  owner={fromOwner}
+                  fallback={t("common.otherUser")}
+                />
+              )}
               <ArrowLeftRight className="w-3 h-3 text-gray-300 shrink-0" />
               <AccountMiniIcon account={toAccount} size={11} />
               <span className="truncate">{toAccount.name}</span>
               {toIsOtherUser && (
-                <span
-                  title={toOwner ? t("common.otherUser") + ": " + toOwner.name : t("common.otherUser")}
-                  className={`shrink-0 inline-flex items-center gap-0.5 pl-1 pr-1 rounded-full text-[10px] font-semibold`}
-                  style={{
-                    color: toOwner?.color ?? "#6B7280",
-                    backgroundColor: (toOwner?.color ?? "#6B7280") + "1A",
-                  }}
-                >
-                  {toOwner?.avatar_url ? (
-                    <img
-                      src={toOwner.avatar_url}
-                      alt=""
-                      className="w-3.5 h-3.5 rounded-full object-cover shrink-0"
-                    />
-                  ) : (
-                    <span
-                      className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[8px] font-bold shrink-0"
-                      style={{ backgroundColor: toOwner?.color ?? "#6B7280" }}
-                    >
-                      {toOwner?.name?.charAt(0).toUpperCase() ?? "?"}
-                    </span>
-                  )}
-                  {toOwner ? toOwner.name : t("common.otherUser")}
-                </span>
+                <OtherUserBadge
+                  owner={toOwner}
+                  fallback={t("common.otherUser")}
+                />
               )}
             </span>
           ) : (
