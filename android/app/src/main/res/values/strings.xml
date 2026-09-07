@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Inti</string>
+    <string name="title_activity_main">Inti</string>
+    <string name="package_name">com.slenv.inti</string>
+    <string name="custom_url_scheme">com.slenv.inti</string>
+</resources>
