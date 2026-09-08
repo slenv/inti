@@ -119,6 +119,7 @@ CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts(user_id);
 CREATE INDEX IF NOT EXISTS idx_categories_user ON categories(user_id);
 CREATE INDEX IF NOT EXISTS idx_space_shares_space ON space_shares(space_id);
 CREATE INDEX IF NOT EXISTS idx_space_shares_shared ON space_shares(shared_space_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_space_shares_one_per_user ON space_shares(created_by);
 
 -- ================================================================
 -- FUNCTIONS (SECURITY DEFINER to avoid RLS recursion)

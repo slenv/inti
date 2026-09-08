@@ -167,6 +167,11 @@ export default function Spaces() {
     setLoading(true)
 
     if (share && selectedShares.size > 0) {
+      // Regla: un usuario solo puede compartir UN espacio a la vez.
+      await supabase
+        .from('space_shares')
+        .delete()
+        .eq('created_by', profile.id)
       const rows = [...selectedShares].map((sid) => ({
         space_id: pendingJoin.id,
         shared_space_id: sid,
@@ -179,6 +184,7 @@ export default function Spaces() {
         setLoading(false)
         return
       }
+      await refreshAllShares()
     }
 
     if (share && selectedAccounts.size > 0) {
@@ -207,10 +213,8 @@ export default function Spaces() {
 
   function toggleShare(id: string) {
     setSelectedShares((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
+      if (prev.has(id)) return new Set()
+      return new Set([id])
     })
   }
 
@@ -236,7 +240,7 @@ export default function Spaces() {
   }
 
   async function handleToggleShare(spaceId: string, sharedSpaceId: string, currentlyShared: boolean) {
-    if (shareBusy) return
+    if (shareBusy || !profile) return
     setShareBusy(true)
     if (currentlyShared) {
       const { error } = await supabase
@@ -251,9 +255,15 @@ export default function Spaces() {
         return
       }
     } else {
+      // Regla: un usuario solo puede compartir UN espacio a la vez.
+      // Primero se quitan sus shares previos y luego se inserta el nuevo.
+      await supabase
+        .from('space_shares')
+        .delete()
+        .eq('created_by', profile.id)
       const { error } = await supabase
         .from('space_shares')
-        .insert({ space_id: spaceId, shared_space_id: sharedSpaceId, created_by: profile?.id })
+        .insert({ space_id: spaceId, shared_space_id: sharedSpaceId, created_by: profile.id })
       if (error) {
         console.error('[spaces] addShare', error)
         alert(t('spaces.shareError'))
@@ -261,24 +271,36 @@ export default function Spaces() {
         return
       }
     }
-    await refreshShares(spaceId)
+    await refreshAllShares()
     setShareBusy(false)
   }
 
-  async function refreshShares(spaceId: string) {
+  async function refreshAllShares() {
+    if (!profile) return
     const { data } = await supabase
       .from('space_shares')
-      .select('shared_space_id, created_by, shared:spaces!space_shares_shared_space_id_fkey(name), profiles(name, color, avatar_url)')
-      .eq('space_id', spaceId)
-    setSpaceShares((prev) => ({
-      ...prev,
-      [spaceId]: (data ?? []).map((sh: any) => ({
+      .select('space_id, shared_space_id, created_by, shared:spaces!space_shares_shared_space_id_fkey(name), profiles(name, color, avatar_url)')
+      .eq('created_by', profile.id)
+    const bySpace: Record<string, ShareRow[]> = {}
+    for (const sh of (data ?? []) as any[]) {
+      const row: ShareRow = {
         shared_space_id: sh.shared_space_id,
         name: sh.shared?.name ?? '—',
         created_by: sh.created_by,
         profile: sh.profiles ?? null,
-      })),
-    }))
+      }
+      if (!bySpace[sh.space_id]) bySpace[sh.space_id] = []
+      bySpace[sh.space_id].push(row)
+    }
+    setSpaceShares((prev) => {
+      const next: Record<string, ShareRow[]> = {}
+      for (const [spaceId, rows] of Object.entries(prev)) {
+        const mine = bySpace[spaceId] ?? []
+        const others = rows.filter((r) => r.created_by !== profile.id)
+        next[spaceId] = [...others, ...mine]
+      }
+      return next
+    })
   }
 
   async function handleToggleAccountShare(spaceId: string, accountId: string, currentlyShared: boolean) {
@@ -432,8 +454,8 @@ export default function Spaces() {
                       onClick={() => toggleShare(s.id)}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors ${checked ? 'border-accent bg-accent/5' : 'border-gray-200 hover:border-gray-300'}`}
                     >
-                      <span className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-accent border-accent text-white' : 'border-gray-300'}`}>
-                        {checked && <Check className="w-3.5 h-3.5" />}
+                      <span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-colors ${checked ? 'border-accent' : 'border-gray-300'}`}>
+                        {checked && <span className="w-2.5 h-2.5 rounded-full bg-accent" />}
                       </span>
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-medium text-gray-700 truncate">{s.name}</span>
@@ -549,8 +571,8 @@ export default function Spaces() {
                               onClick={() => handleToggleShare(space.id, s.id, checked)}
                               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors ${checked ? 'border-accent bg-accent/5' : 'border-gray-200 hover:border-gray-300'} ${shareBusy ? 'opacity-60' : ''}`}
                             >
-                              <span className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-accent border-accent text-white' : 'border-gray-300'}`}>
-                                {checked && <Check className="w-3.5 h-3.5" />}
+<span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-colors ${checked ? 'border-accent' : 'border-gray-300'}`}>
+                                {checked && <span className="w-2.5 h-2.5 rounded-full bg-accent" />}
                               </span>
                               <span className="flex-1 min-w-0">
                                 <span className="block text-sm font-medium text-gray-700 truncate">{s.name}</span>
