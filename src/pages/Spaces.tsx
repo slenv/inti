@@ -47,7 +47,12 @@ export default function Spaces() {
   const [spaceShares, setSpaceShares] = useState<Record<string, ShareRow[]>>({})
   const [ownSpaces, setOwnSpaces] = useState<Space[]>([])
   const [sharedSpaceIds, setSharedSpaceIds] = useState<Set<string>>(() => new Set())
-  const [personalSpaceId, setPersonalSpaceId] = useState<string | null>(null)
+  const [personalSpaceId, setPersonalSpaceId] = useState<string | null>(() => {
+    const owned = spaces
+      .filter((s) => s.created_by === profile?.id)
+      .sort((a, b) => ((a.created_at ?? '') as string).localeCompare((b.created_at ?? '') as string))
+    return owned[0]?.id ?? null
+  })
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameName, setRenameName] = useState('')
   const [renaming, setRenaming] = useState(false)
@@ -65,8 +70,8 @@ export default function Spaces() {
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(() => new Set())
   const [shareBusy, setShareBusy] = useState(false)
 
-  const shareableOwnSpaces = (excludeId?: string) =>
-    ownSpaces.filter((s) => s.id !== excludeId && !sharedSpaceIds.has(s.id))
+  const shareableOwnSpaces = (targetCurrency: string, excludeId?: string) =>
+    ownSpaces.filter((s) => s.id !== excludeId && !sharedSpaceIds.has(s.id) && s.currency === targetCurrency)
 
   useEffect(() => {
     if (!profile) return
@@ -504,11 +509,11 @@ export default function Spaces() {
             </button>
           </div>
 
-          {shareableOwnSpaces(pendingJoin.id).length === 0 ? (
+          {shareableOwnSpaces(pendingJoin.currency, pendingJoin.id).length === 0 ? (
             <p className="text-sm text-gray-400">{t('spaces.noOwnToShare')}</p>
           ) : (
             <div className="space-y-1.5">
-              {shareableOwnSpaces(pendingJoin.id)
+              {shareableOwnSpaces(pendingJoin.currency, pendingJoin.id)
                 .map((s) => {
                   const checked = selectedShares.has(s.id)
                   return (
@@ -591,7 +596,7 @@ export default function Spaces() {
               shares.filter((sh) => sh.created_by === profile?.id).map((sh) => sh.shared_space_id),
             )
             const mySharedAccountIds = spaceAccountShares[space.id] ?? new Set()
-            const myShareableSpaces = shareableOwnSpaces(space.id)
+            const myShareableSpaces = shareableOwnSpaces(space.currency, space.id)
             const otherShares = shares.filter((sh) => sh.created_by !== profile?.id)
             const otherAccountShares = (accountSharesAll[space.id] ?? []).filter((a) => a.created_by !== profile?.id)
             const contributors = new Map<string, { profile: ShareRow['profile']; spaceName: string; accounts: Pick<Account, 'id' | 'name' | 'type' | 'icon' | 'color'>[] }>()
@@ -613,7 +618,18 @@ export default function Spaces() {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="font-semibold text-gray-700">{space.name}</h3>
-                    <p className="text-xs text-gray-400">{space.currency}</p>
+                    {isPersonal ? (
+                      <select
+                        value={space.currency}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => handleUpdateCurrency(space.id, e.target.value)}
+                        className="text-xs text-gray-500 bg-transparent border border-gray-200 dark:border-white/10 rounded-md px-1 py-0.5 focus:border-accent outline-none cursor-pointer"
+                      >
+                        {CURRENCIES.map((c) => <option key={c} value={c}>{c} - {t(CURRENCY_MAP[c]?.nameKey as any)}</option>)}
+                      </select>
+                    ) : (
+                      <p className="text-xs text-gray-400">{space.currency}</p>
+                    )}
                   </div>
                   {isPersonal ? (
                     <button

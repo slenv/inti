@@ -28,6 +28,8 @@ function ScrollRestorer() {
 }
 
 const Login = lazy(() => import('@/pages/Login'))
+const Landing = lazy(() => import('@/pages/Landing'))
+const ResetPassword = lazy(() => import('@/pages/ResetPassword'))
 const Onboarding = lazy(() => import('@/pages/Onboarding'))
 const Dashboard = lazy(() => import('@/pages/Dashboard'))
 const Transactions = lazy(() => import('@/pages/Transactions'))
@@ -36,6 +38,7 @@ const Accounts = lazy(() => import('@/pages/Accounts'))
 const Categories = lazy(() => import('@/pages/Categories'))
 const Spaces = lazy(() => import('@/pages/Spaces'))
 const Profile = lazy(() => import('@/pages/Profile'))
+const Password = lazy(() => import('@/pages/Password'))
 const Install = lazy(() => import('@/pages/Install'))
 const AccountDetail = lazy(() => import('@/pages/AccountDetail'))
 const TypeDetail = lazy(() => import('@/pages/TypeDetail'))
@@ -113,7 +116,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, [])
 
   if (!checked) return <BootScreen />
-  if (!hasSession) return <Navigate to="/login" state={{ from: location }} replace />
+  if (!hasSession) {
+    if (location.pathname === '/') return <Landing />
+    return <Navigate to="/login" state={{ from: location }} replace />
+  }
   return <>{children}</>
 }
 
@@ -170,6 +176,7 @@ export default function App() {
         <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/install" element={<Install />} />
             <Route path="/onboarding" element={<AuthGate><Onboarding /></AuthGate>} />
             <Route element={<AuthGate><Layout /></AuthGate>}>
@@ -178,6 +185,7 @@ export default function App() {
               <Route path="add" element={<AddTransaction />} />
               <Route path="spaces" element={<Spaces />} />
               <Route path="profile" element={<Profile />} />
+              <Route path="password" element={<Password />} />
               <Route path="accounts" element={<Accounts />} />
               <Route path="account-detail" element={<AccountDetail />} />
               <Route path="type-detail" element={<TypeDetail />} />

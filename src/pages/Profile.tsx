@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, LogOut, Wallet, Tag, ChevronRight, User, Check, Languages, Camera } from 'lucide-react'
+import { ArrowLeft, LogOut, Wallet, Tag, ChevronRight, User, Check, Languages, Camera, Lock } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAppStore } from '@/store/useAppStore'
@@ -72,6 +72,7 @@ export default function Profile() {
   const menuItems = [
     { icon: Wallet, label: t('profile.accounts'), path: '/accounts' },
     { icon: Tag, label: t('profile.categories'), path: '/categories' },
+    { icon: Lock, label: t('profile.password'), path: '/password' },
   ]
 
   return (

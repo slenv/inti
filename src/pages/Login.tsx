@@ -14,7 +14,7 @@ import {
   User,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 6;
@@ -31,7 +31,10 @@ function getPasswordLevel(pw: string): number {
 
 export default function Login() {
   const { t } = useTranslation();
-  const [isRegister, setIsRegister] = useState(false);
+  const location = useLocation();
+  const [isRegister, setIsRegister] = useState(
+    (location.state as { register?: boolean } | null)?.register ?? false
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -39,6 +42,9 @@ export default function Login() {
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
   const [shakeTrigger, setShakeTrigger] = useState(0);
   const emailRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -155,8 +161,65 @@ export default function Login() {
     setRegisteredEmail(null);
   }
 
+  async function handleForgot(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!EMAIL_RE.test(forgotEmail)) return fail(t("auth.invalidEmail"));
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) throw error;
+      setForgotSent(true);
+    } catch (err: any) {
+      if (
+        err.message?.includes("Failed to fetch") ||
+        err.message?.includes("NetworkError")
+      ) {
+        fail(t("auth.connectionError"));
+      } else {
+        fail(err.message || t("auth.unexpectedError"));
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
   if (registeredEmail) {
+if (forgotSent) {
     return (
+      <div className="min-h-dvh flex items-center justify-center py-8">
+        <div className="w-full max-w-sm text-center animate-fade-in-up">
+          <Logo className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-white  p-2" />
+          <div className="w-14 h-14 rounded-full bg-income-light flex items-center justify-center mx-auto mb-4">
+            <MailCheck className="w-7 h-7 text-income animate-pop-in" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-800">
+            {t("auth.resetSent")}
+          </h2>
+          <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+            {t("auth.resetSentDesc", { email: forgotEmail })}
+          </p>
+          <div className="mt-6 space-y-3">
+            <button
+              onClick={() => {
+                setForgotSent(false);
+                setShowForgot(false);
+                setForgotEmail("");
+              }}
+              className="btn-primary flex items-center justify-center gap-2 w-full"
+            >
+              {t("auth.backLogin")}
+            </button>
+            <p className="text-xs text-gray-400">{t("auth.checkEmailHint")}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
       <div className="min-h-dvh flex items-center justify-center py-8">
         <div className="w-full max-w-sm text-center animate-fade-in-up">
           <Logo className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-white  p-2" />
@@ -214,6 +277,62 @@ export default function Login() {
             </button>
           </div>
 
+          {showForgot ? (
+          <form
+            key="forgot"
+            onSubmit={handleForgot}
+            className="space-y-4 animate-fade-in-up"
+          >
+            {error && (
+              <div
+                key={`forgot-${shakeTrigger}`}
+                className="animate-shake flex items-start gap-3 bg-expense-light border border-expense/20 text-expense text-sm rounded-xl px-4 py-3"
+              >
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+            <p className="text-sm text-gray-500 leading-relaxed">{t("auth.resetHint")}</p>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="email"
+                placeholder={t("auth.email")}
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                autoFocus
+                required
+                autoComplete="email"
+                inputMode="email"
+                className="input-field"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  {t("auth.sending")}
+                </>
+              ) : (
+                t("auth.sendResetLink")
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowForgot(false);
+                setError(null);
+              }}
+              className="w-full text-center text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              {t("auth.backLogin")}
+            </button>
+          </form>
+        ) : (
           <form
             key={isRegister ? "register" : "login"}
             onSubmit={handleSubmit}
@@ -342,9 +461,22 @@ export default function Login() {
                 t("auth.login")
               )}
             </button>
+            {!isRegister && !loading && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForgot(true);
+                  setError(null);
+                }}
+                className="w-full text-center text-xs text-accent font-medium hover:underline transition-colors"
+              >
+                {t("auth.forgot")}
+              </button>
+            )}
           </form>
+        )}
 
-          <div className="relative">
+        <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-gray-100" />
             </div>
