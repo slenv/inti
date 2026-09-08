@@ -15,7 +15,7 @@ import PhotoLightbox from '@/components/PhotoLightbox'
 import SwipeableRow from '@/components/SwipeableRow'
 import { IconTile } from '@/components/IconPicker'
 import { ACCOUNT_TYPE_ICONS, DEFAULT_COLOR } from '@/lib/icons'
-import { getUserOwners, type SpaceOwnerSummary } from '@/lib/shared'
+import { getShareScope, getUserOwners, type SpaceOwnerSummary } from '@/lib/shared'
 import { Users } from 'lucide-react'
 
 type TxType = 'expense' | 'income' | 'transfer'
@@ -49,6 +49,7 @@ export default function AddTransaction() {
   const [txType, setTxType] = useState<TxType>('expense')
   const [accounts, setAccounts] = useState<Account[]>([])
   const [allAccounts, setAllAccounts] = useState<Account[]>([])
+  const [allowedAccounts, setAllowedAccounts] = useState<Set<string>>(new Set())
   const [owners, setOwners] = useState<Map<string, SpaceOwnerSummary>>(new Map())
   const [categories, setCategories] = useState<Category[]>([])
   const [date, setDate] = useState(() => {
@@ -119,13 +120,21 @@ export default function AddTransaction() {
       supabase.from('categories').select('*').eq('user_id', profile.id),
       supabase.from('accounts').select('*'),
       getUserOwners(),
-    ]).then(([acc, cat, allAcc, ownersMap]) => {
+      getShareScope(activeSpaceId),
+    ]).then(([acc, cat, allAcc, ownersMap, scope]) => {
       setAccounts(acc.data ?? [])
       setCategories(cat.data ?? [])
       setAllAccounts(allAcc.data ?? [])
       setOwners(ownersMap)
+      setAllowedAccounts(new Set(scope.allowedAccounts))
     })
   }, [activeSpaceId, profile?.id])
+
+  useEffect(() => {
+    if (!toAccountId) return
+    const isMine = accounts.some((a) => a.id === toAccountId)
+    if (!isMine && !allowedAccounts.has(toAccountId)) setToAccountId('')
+  }, [accounts, allowedAccounts, toAccountId])
 
   const filteredCategories = categories.filter((c) => c.type === txType)
 
@@ -188,7 +197,7 @@ export default function AddTransaction() {
       .filter(([uid]) => uid !== profile?.id)
       .sort(([, a], [, b]) => a.name.localeCompare(b.name))
       .flatMap(([uid, owner]) => {
-        const items = allAccounts.filter((a) => a.user_id === uid && a.id !== accountId)
+        const items = allAccounts.filter((a) => a.user_id === uid && a.id !== accountId && allowedAccounts.has(a.id))
         if (items.length === 0) return []
         return [{
           key: uid,

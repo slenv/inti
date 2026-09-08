@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Plus, Users, Copy, Check, Settings, Link as LinkIcon, X } from 'lucide-react'
+import { ArrowLeft, Plus, Users, Copy, Check, Settings, Link as LinkIcon, X, Pencil } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAppStore } from '@/store/useAppStore'
@@ -29,6 +29,13 @@ interface ShareRow {
   profile: { name: string; color: string; avatar_url: string | null } | null
 }
 
+interface OtherAccountShare {
+  account_id: string
+  created_by: string | null
+  account: Pick<Account, 'id' | 'name' | 'type' | 'icon' | 'color'> | null
+  profile: { name: string; color: string; avatar_url: string | null } | null
+}
+
 export default function Spaces() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -39,8 +46,14 @@ export default function Spaces() {
   const [spaceDetails, setSpaceDetails] = useState<Record<string, SpaceWithMembers>>({})
   const [spaceShares, setSpaceShares] = useState<Record<string, ShareRow[]>>({})
   const [ownSpaces, setOwnSpaces] = useState<Space[]>([])
+  const [sharedSpaceIds, setSharedSpaceIds] = useState<Set<string>>(() => new Set())
+  const [personalSpaceId, setPersonalSpaceId] = useState<string | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameName, setRenameName] = useState('')
+  const [renaming, setRenaming] = useState(false)
   const [ownAccounts, setOwnAccounts] = useState<Pick<Account, 'id' | 'name' | 'type' | 'icon' | 'color'>[]>([])
   const [spaceAccountShares, setSpaceAccountShares] = useState<Record<string, Set<string>>>({})
+  const [accountSharesAll, setAccountSharesAll] = useState<Record<string, OtherAccountShare[]>>({})
   const [newName, setNewName] = useState('')
   const [newCurrency, setNewCurrency] = useState('PEN')
   const [inviteCode, setInviteCode] = useState('')
@@ -52,6 +65,9 @@ export default function Spaces() {
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(() => new Set())
   const [shareBusy, setShareBusy] = useState(false)
 
+  const shareableOwnSpaces = (excludeId?: string) =>
+    ownSpaces.filter((s) => s.id !== excludeId && !sharedSpaceIds.has(s.id))
+
   useEffect(() => {
     if (!profile) return
     supabase
@@ -59,9 +75,30 @@ export default function Spaces() {
       .select('space_id, spaces(*)')
       .eq('user_id', profile.id)
       .eq('role', 'owner')
-      .then(({ data }) =>
-        setOwnSpaces((data ?? []).map((m) => (m as any).spaces).filter(Boolean)),
-      )
+      .then(async ({ data }) => {
+        const owned = (data ?? []).map((m) => (m as any).spaces).filter(Boolean)
+        setOwnSpaces(owned)
+        if (owned.length === 0) {
+          setSharedSpaceIds(new Set())
+          return
+        }
+        const { data: members } = await supabase
+          .from('space_members')
+          .select('space_id')
+          .in('space_id', owned.map((s) => s.id))
+        const counts: Record<string, number> = {}
+        for (const m of (members ?? []) as { space_id: string }[]) {
+          counts[m.space_id] = (counts[m.space_id] ?? 0) + 1
+        }
+        const multi = Object.keys(counts).filter((id) => counts[id] > 1)
+        const multiSet = new Set(multi)
+        setSharedSpaceIds(multiSet)
+        const personal = owned
+          .filter((s) => !multiSet.has(s.id))
+          .sort((a, b) => ((a.created_at ?? '') as string).localeCompare((b.created_at ?? '') as string))[0]
+        setPersonalSpaceId(personal?.id ?? null)
+        setRenamingId(null)
+      })
     supabase
       .from('accounts')
       .select('id, name, type, icon, color')
@@ -73,7 +110,7 @@ export default function Spaces() {
   useEffect(() => {
     spaces.forEach(async (s) => {
       const uid = profile?.id
-      const [membersRes, sharesRes, accountSharesRes] = await Promise.all([
+      const [membersRes, sharesRes, accountSharesRes, accountSharesAllRes] = await Promise.all([
         supabase
           .from('space_members')
           .select('*, profiles(name, color, avatar_url)')
@@ -89,6 +126,10 @@ export default function Spaces() {
               .eq('space_id', s.id)
               .eq('created_by', uid)
           : Promise.resolve({ data: null as any }),
+        supabase
+          .from('account_shares')
+          .select('account_id, created_by, account:accounts!account_shares_account_id_fkey(id, name, type, icon, color), profiles(name, color, avatar_url)')
+          .eq('space_id', s.id),
       ])
       if (membersRes.data)
         setSpaceDetails((prev) => ({ ...prev, [s.id]: { ...s, space_members: membersRes.data as any } }))
@@ -106,6 +147,11 @@ export default function Spaces() {
         setSpaceAccountShares((prev) => ({
           ...prev,
           [s.id]: new Set((accountSharesRes.data as any[]).map((r) => r.account_id)),
+        }))
+      if (accountSharesAllRes?.data)
+        setAccountSharesAll((prev) => ({
+          ...prev,
+          [s.id]: (accountSharesAllRes.data as any[]) as OtherAccountShare[],
         }))
     })
   }, [spaces, profile?.id])
@@ -396,6 +442,25 @@ export default function Spaces() {
     setShowSettings(null)
   }
 
+  async function handleRenameSpace(spaceId: string) {
+    const newName = renameName.trim()
+    if (!newName || renaming) return
+    setRenaming(true)
+    const { error } = await supabase.from('spaces').update({ name: newName }).eq('id', spaceId)
+    setRenaming(false)
+    if (error) {
+      console.error('[spaces] rename', error)
+      alert(t('spaces.shareError'))
+      return
+    }
+    setSpaces(spaces.map((s) => s.id === spaceId ? { ...s, name: newName } : s))
+    setOwnSpaces(ownSpaces.map((s) => s.id === spaceId ? { ...s, name: newName } : s))
+    if (spaceDetails[spaceId]) {
+      setSpaceDetails((prev) => ({ ...prev, [spaceId]: { ...prev[spaceId], name: newName } }))
+    }
+    setRenamingId(null)
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3">
@@ -439,12 +504,11 @@ export default function Spaces() {
             </button>
           </div>
 
-          {ownSpaces.filter((s) => s.id !== pendingJoin.id).length === 0 ? (
+          {shareableOwnSpaces(pendingJoin.id).length === 0 ? (
             <p className="text-sm text-gray-400">{t('spaces.noOwnToShare')}</p>
           ) : (
             <div className="space-y-1.5">
-              {ownSpaces
-                .filter((s) => s.id !== pendingJoin.id)
+              {shareableOwnSpaces(pendingJoin.id)
                 .map((s) => {
                   const checked = selectedShares.has(s.id)
                   return (
@@ -521,13 +585,28 @@ export default function Spaces() {
             const details = spaceDetails[space.id]
             const isActive = space.id === activeSpaceId
             const isOwner = details?.space_members?.some((m) => m.user_id === profile?.id && m.role === 'owner')
+            const isPersonal = space.id === personalSpaceId
             const shares = spaceShares[space.id] ?? []
             const mySharedIds = new Set(
               shares.filter((sh) => sh.created_by === profile?.id).map((sh) => sh.shared_space_id),
             )
             const mySharedAccountIds = spaceAccountShares[space.id] ?? new Set()
-            const myShareableSpaces = ownSpaces.filter((s) => s.id !== space.id)
+            const myShareableSpaces = shareableOwnSpaces(space.id)
             const otherShares = shares.filter((sh) => sh.created_by !== profile?.id)
+            const otherAccountShares = (accountSharesAll[space.id] ?? []).filter((a) => a.created_by !== profile?.id)
+            const contributors = new Map<string, { profile: ShareRow['profile']; spaceName: string; accounts: Pick<Account, 'id' | 'name' | 'type' | 'icon' | 'color'>[] }>()
+            for (const sh of otherShares) {
+              if (!sh.created_by) continue
+              const c = contributors.get(sh.created_by) ?? { profile: sh.profile, spaceName: '', accounts: [] }
+              if (!c.spaceName) c.spaceName = sh.name
+              contributors.set(sh.created_by, c)
+            }
+            for (const a of otherAccountShares) {
+              if (!a.created_by || !a.account) continue
+              const c = contributors.get(a.created_by) ?? { profile: a.profile, spaceName: '', accounts: [] }
+              c.accounts.push(a.account)
+              contributors.set(a.created_by, c)
+            }
 
             return (
               <div key={space.id} onClick={() => setActiveSpaceId(space.id)} className={`bg-white rounded-2xl shadow-sm p-4 border-2 transition-all cursor-pointer ${isActive ? 'border-accent' : 'border-transparent hover:border-gray-100'}`}>
@@ -536,15 +615,52 @@ export default function Spaces() {
                     <h3 className="font-semibold text-gray-700">{space.name}</h3>
                     <p className="text-xs text-gray-400">{space.currency}</p>
                   </div>
-                  {isOwner && (
+                  {isPersonal ? (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); if (renamingId === space.id) { setRenamingId(null) } else { setRenameName(space.name); setRenamingId(space.id) } }}
+                      className="p-2 text-gray-300 hover:text-accent transition-colors"
+                      title={t('spaces.rename')}
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  ) : isOwner ? (
                     <button onClick={(e) => { e.stopPropagation(); setShowSettings(showSettings === space.id ? null : space.id) }} className="p-2 text-gray-300 hover:text-accent transition-colors"><Settings className="w-4 h-4" /></button>
-                  )}
-                  {!isOwner && (
+                  ) : (
                     <button onClick={(e) => { e.stopPropagation(); setShowSettings(showSettings === space.id ? null : space.id) }} className="p-2 text-gray-300 hover:text-expense transition-colors"><Settings className="w-4 h-4" /></button>
                   )}
                 </div>
 
-                {showSettings === space.id && (
+                {renamingId === space.id && (
+                  <div onClick={(e) => e.stopPropagation()} className="border-t border-gray-100 dark:border-white/10 pt-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={renameName}
+                        onChange={(e) => setRenameName(e.target.value)}
+                        maxLength={60}
+                        autoFocus
+                        className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:border-accent"
+                        placeholder={space.name}
+                      />
+                      <button
+                        onClick={() => handleRenameSpace(space.id)}
+                        disabled={renaming || !renameName.trim()}
+                        className="p-2 rounded-xl bg-accent text-white disabled:opacity-50"
+                        title={t('common.save')}
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setRenamingId(null)}
+                        className="p-2 rounded-xl text-gray-400 hover:bg-gray-100"
+                        title={t('common.cancel')}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {!isPersonal && showSettings === space.id && (
                   <div className="border-t border-gray-100 dark:border-white/10 pt-3 mb-3 space-y-2">
                     <p className="text-xs text-gray-400">{t('spaces.changeCurrency')}</p>
                     <select value={space.currency} onChange={(e) => { e.stopPropagation(); handleUpdateCurrency(space.id, e.target.value) }} onClick={(e) => e.stopPropagation()} className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm">
@@ -612,22 +728,37 @@ export default function Spaces() {
                         })}
                       </div>
 
-                      {otherShares.length > 0 && (
-                        <div className="mt-3 space-y-1.5">
+                      {contributors.size > 0 && (
+                        <div className="mt-3 space-y-2">
                           <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">{t('spaces.sharedByOthers')}</p>
-                          {otherShares.map((sh) => (
-                            <div key={sh.shared_space_id} className="flex items-center gap-2">
-                              {sh.profile?.avatar_url ? (
-                                <img src={sh.profile.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover shrink-0" />
-                              ) : (
-                                <span className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] text-white font-bold shrink-0" style={{ backgroundColor: sh.profile?.color ?? '#9CA3AF' }}>
-                                  {(sh.profile?.name ?? '?').charAt(0).toUpperCase()}
+                          {[...contributors.entries()].map(([cuid, c]) => (
+                            <div key={cuid} className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                {c.profile?.avatar_url ? (
+                                  <img src={c.profile.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover shrink-0" />
+                                ) : (
+                                  <span className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] text-white font-bold shrink-0" style={{ backgroundColor: c.profile?.color ?? '#9CA3AF' }}>
+                                    {(c.profile?.name ?? '?').charAt(0).toUpperCase()}
+                                  </span>
+                                )}
+                                <span className="flex-1 min-w-0">
+                                  <span className="block text-sm text-gray-600 truncate">{c.spaceName || c.profile?.name || '—'}</span>
+                                  <span className="block text-[11px] text-gray-400 truncate">{c.profile?.name ?? '—'}</span>
                                 </span>
+                              </div>
+                              {c.accounts.length > 0 && (
+                                <div className="ml-7 space-y-1.5">
+                                  {c.accounts.map((a) => (
+                                    <div key={a.id} className="flex items-center gap-2">
+                                      <IconTile icon={a.icon} color={a.color} size="sm" />
+                                      <span className="flex-1 min-w-0">
+                                        <span className="block text-xs text-gray-600 truncate">{a.name}</span>
+                                        <span className="block text-[11px] text-gray-400 truncate">{t(TYPE_KEYS[a.type] as any)}</span>
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
                               )}
-                              <span className="flex-1 min-w-0">
-                                <span className="block text-sm text-gray-600 truncate">{sh.name}</span>
-                                <span className="block text-[11px] text-gray-400 truncate">{sh.profile?.name ?? '—'}</span>
-                              </span>
                             </div>
                           ))}
                         </div>
@@ -653,13 +784,15 @@ export default function Spaces() {
                   </div>
                 )}
 
-                <div className="flex items-center gap-2 mb-3 bg-gray-50 rounded-xl px-3 py-2">
-                  <span className="text-xs text-gray-400">{t('spaces.invite')}</span>
-                  <code className="text-sm font-mono font-semibold text-gray-600 flex-1">{space.invite_code}</code>
-                  <button onClick={(e) => { e.stopPropagation(); copyInviteCode(space.id, space.invite_code) }} className="p-1 text-gray-300 hover:text-accent transition-colors">
-                    {copiedId === space.id ? <Check className="w-4 h-4 text-income" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                </div>
+                {!isPersonal && (
+                  <div className="flex items-center gap-2 mb-3 bg-gray-50 rounded-xl px-3 py-2">
+                    <span className="text-xs text-gray-400">{t('spaces.invite')}</span>
+                    <code className="text-sm font-mono font-semibold text-gray-600 flex-1">{space.invite_code}</code>
+                    <button onClick={(e) => { e.stopPropagation(); copyInviteCode(space.id, space.invite_code) }} className="p-1 text-gray-300 hover:text-accent transition-colors">
+                      {copiedId === space.id ? <Check className="w-4 h-4 text-income" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                )}
 
                 {details?.space_members && (
                   <div className="flex items-center gap-1">

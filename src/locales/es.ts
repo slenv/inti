@@ -268,6 +268,7 @@ export default {
   'spaces.member': 'miembro',
   'spaces.invite': 'Invitar:',
   'spaces.changeCurrency': 'Cambiar moneda:',
+  'spaces.rename': 'Renombrar espacio',
   'spaces.empty': 'Sin espacios',
   'spaces.emptyDesc': 'Crea un espacio para empezar a gestionar tus finanzas',
   'spaces.deleteSpace': 'Eliminar espacio',

@@ -25,6 +25,26 @@ export async function getShareScope(spaceId: string): Promise<ShareScope> {
   }
 }
 
+export async function getMyAccountIds(
+  userId: string | undefined | null,
+): Promise<string[]> {
+  if (!userId) return []
+  const { data } = await supabase.from('accounts').select('id').eq('user_id', userId)
+  return (data ?? []).map((a) => a.id) as string[]
+}
+
+export function spaceScopeFilter(opts: {
+  scopeIds: string[]
+  myAccountIds: string[]
+  hasOtherMembers: boolean
+}): string | null {
+  const myIds = opts.myAccountIds.filter(Boolean)
+  if (!opts.hasOtherMembers && myIds.length > 0) {
+    return `space_id.in.(${opts.scopeIds.join(',')}),account_id.in.(${myIds.join(',')}),to_account_id.in.(${myIds.join(',')})`
+  }
+  return null
+}
+
 export function filterOwnScope(scope: string[], memberSpaceIds: string[]): string[] {
   const memberSet = new Set(memberSpaceIds)
   return scope.filter((id) => memberSet.has(id))
