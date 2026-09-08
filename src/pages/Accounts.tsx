@@ -8,7 +8,7 @@ import { useAppStore } from "@/store/useAppStore";
 import type { Account, AccountType } from "@/types/database";
 import { COLORS, formatCurrency } from "@/types/database";
 import { ACCOUNT_TYPE_ICONS } from "@/lib/icons";
-import { getShareScope, getUserOwners, groupByUser, type SpaceOwnerSummary } from "@/lib/shared";
+import { getShareScope, getUserOwners, getMyAccountIds, spaceScopeFilter, groupByUser, type SpaceOwnerSummary } from "@/lib/shared";
 import UserBubble from "@/components/UserBubble";
 import {
   ArrowLeft,
@@ -77,30 +77,34 @@ export default function Accounts() {
     } else {
       setLoading(true);
     }
-    getShareScope(spaceId).then(({ scope, allowedAccounts }) => {
+    getShareScope(spaceId).then(async ({ scope, allowedAccounts }) => {
       setScope(scope);
       setAllowedAccounts(new Set(allowedAccounts));
+      const membersRes = await supabase
+        .from("space_members")
+        .select("user_id")
+        .eq("space_id", spaceId);
+      const hasOtherMembers = (membersRes.data ?? []).some(
+        (m) => m.user_id !== profile?.id,
+      );
+      setIsShared(hasOtherMembers);
+      const myAccountIds = await getMyAccountIds(profile?.id);
+      const scopeFilter = spaceScopeFilter({ scopeIds: scope, myAccountIds, hasOtherMembers });
+      let txQuery = supabase
+        .from("transactions")
+        .select("type, amount, account_id, to_account_id");
+      if (scopeFilter) txQuery = txQuery.or(scopeFilter);
+      else txQuery = txQuery.in("space_id", scope);
       Promise.all([
         supabase
           .from("accounts")
           .select("*")
           .order("created_at", { ascending: false }),
-        supabase
-          .from("transactions")
-          .select("type, amount, account_id, to_account_id")
-          .in("space_id", scope),
+        txQuery,
         getUserOwners(),
-        supabase
-          .from("space_members")
-          .select("user_id")
-          .eq("space_id", spaceId),
-      ]).then(([accRes, txRes, ownersMap, membersRes]) => {
+      ]).then(([accRes, txRes, ownersMap]) => {
         setAccounts(accRes.data ?? []);
         setOwnersById(ownersMap);
-        const hasOtherMembers = (membersRes.data ?? []).some(
-          (m) => m.user_id !== profile?.id,
-        );
-        setIsShared(hasOtherMembers);
         const map: Record<string, number> = {};
         (txRes.data ?? []).forEach((tx) => {
           const amount = Number(tx.amount) || 0;

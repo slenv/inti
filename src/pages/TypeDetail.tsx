@@ -3,7 +3,7 @@ import PeriodSelector from "@/components/PeriodSelector";
 import { useTranslation } from "@/lib/i18n";
 import { classifyFlow } from "@/lib/flow";
 import { fromRange, periodRange, type Period } from "@/lib/period";
-import { getShareScope, getUserOwners, type SpaceOwnerSummary } from "@/lib/shared";
+import { getShareScope, getUserOwners, getMyAccountIds, spaceScopeFilter, type SpaceOwnerSummary } from "@/lib/shared";
 import { sessionData } from "@/lib/sessionState";
 import { supabase } from "@/lib/supabase";
 import { useAppStore } from "@/store/useAppStore";
@@ -74,14 +74,18 @@ export default function TypeDetail() {
         const range = periodRange(period, { weekStartsOn: locale === "es" ? 1 : 0 });
         const { from, to } = fromRange(range);
 
+        const myAccountIds = await getMyAccountIds(profile?.id);
+        const scopeFilter = spaceScopeFilter({ scopeIds, myAccountIds, hasOtherMembers });
+
         let query = supabase
           .from("transactions")
           .select(
             "*, profiles(name, color, avatar_url), categories(name, color, type, user_id), accounts!transactions_account_id_fkey(id, user_id, name, icon, color, type), to_accounts: accounts!transactions_to_account_id_fkey(id, user_id, name, icon, color, type)",
           )
           .in("type", ["income", "expense", "transfer"])
-          .in("space_id", scopeIds)
           .order("date", { ascending: false });
+        if (scopeFilter) query = query.or(scopeFilter);
+        else query = query.in("space_id", scopeIds);
         if (from) query = query.gte("date", from);
         if (to) query = query.lte("date", to);
 
