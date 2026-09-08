@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Download, CheckCircle2, ShieldCheck } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
+import { usePageMeta } from '@/lib/seo'
 import { checkForUpdate } from '@/lib/update'
 import Logo from '@/components/Logo'
 
 export default function Install() {
   const { t } = useTranslation()
+  usePageMeta(`${t('app.name')} – ${t('install.title')}`)
   const [url, setUrl] = useState<string | null>(null)
   const [version, setVersion] = useState<string | null>(null)
 

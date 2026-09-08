@@ -394,4 +394,5 @@ export default {
   'landing.installTitle': 'Lleva Inti contigo',
   'landing.installDesc': 'Descarga el APK o instala la app desde el navegador y ten tus finanzas siempre a la mano.',
   'landing.footer': 'Hecho con cuidado para tus finanzas.',
+  'landing.developedBy': 'Desarrollado por',
 } as const

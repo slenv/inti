@@ -394,4 +394,5 @@ export default {
   'landing.installTitle': 'Take Inti with you',
   'landing.installDesc': 'Download the APK or install the app from your browser and keep your finances always at hand.',
   'landing.footer': 'Made with care for your finances.',
+  'landing.developedBy': 'Developed by',
 } as const

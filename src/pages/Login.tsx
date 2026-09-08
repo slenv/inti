@@ -1,5 +1,6 @@
 import Logo from "@/components/Logo";
 import { useTranslation } from "@/lib/i18n";
+import { usePageMeta } from "@/lib/seo";
 import { supabase } from "@/lib/supabase";
 import { ensureUserData } from "@/lib/userSetup";
 import { useAppStore } from "@/store/useAppStore";
@@ -32,6 +33,7 @@ function getPasswordLevel(pw: string): number {
 export default function Login() {
   const { t } = useTranslation();
   const location = useLocation();
+  usePageMeta(`${t("app.name")} – ${t("auth.loginTitle")}`);
   const [isRegister, setIsRegister] = useState(
     (location.state as { register?: boolean } | null)?.register ?? false
   );

@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import {
   ArrowRight,
   BarChart3,
+  Code2,
   Coins,
   Download,
   FileSpreadsheet,
@@ -10,6 +11,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useTranslation, type Locale } from "@/lib/i18n";
+import { usePageMeta } from "@/lib/seo";
 import Logo from "@/components/Logo";
 
 const LANGUAGE_SELECTOR = ["es", "en"] as Locale[];
@@ -35,6 +37,8 @@ function LanguageSelector() {
 export default function Landing() {
   const { t } = useTranslation();
 
+  usePageMeta(`${t("app.name")} – ${t("app.tagline")}`, t("landing.heroSub"));
+
   const features = [
     { icon: Users, title: t("landing.featShared"), desc: t("landing.featSharedDesc"), tint: "bg-accent-light text-accent" },
     { icon: Wallet, title: t("landing.featAccounts"), desc: t("landing.featAccountsDesc"), tint: "bg-mint-light text-income" },
@@ -52,7 +56,7 @@ export default function Landing() {
 
   return (
     <div className="min-h-dvh bg-surface">
-      <header className="sticky top-0 z-20 bg-surface/80 backdrop-blur border-b border-gray-100">
+      <header className="sticky top-0 z-20 bg-white border-b border-gray-100 shadow-sm">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
           <Logo className="w-8 h-8 rounded-lg" />
           <span className="text-lg font-bold text-gray-800">{t("app.name")}</span>
@@ -69,14 +73,14 @@ export default function Landing() {
         <p className="text-sm sm:text-base text-gray-500 mt-4 max-w-xl mx-auto leading-relaxed">
           {t("landing.heroSub")}
         </p>
-        <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
-          <Link to="/login" state={{ register: true }} className="btn-primary sm:w-auto sm:px-8 flex items-center justify-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 justify-center mt-8">
+          <Link to="/login" state={{ register: true }} className="btn-primary sm:!w-48 flex items-center justify-center gap-2">
             {t("landing.ctaStart")} <ArrowRight className="w-4 h-4" />
           </Link>
-          <Link to="/login" className="btn-secondary sm:w-auto sm:px-8 flex items-center justify-center gap-2">
+          <Link to="/login" className="btn-secondary sm:!w-48 flex items-center justify-center gap-2">
             {t("landing.ctaLogin")}
           </Link>
-          <Link to="/install" className="sm:w-auto sm:px-8 flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors text-sm font-semibold">
+          <Link to="/install" className="w-full sm:w-48 flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors text-sm font-semibold shadow-sm">
             <Download className="w-4 h-4" /> {t("landing.ctaInstall")}
           </Link>
         </div>
@@ -137,8 +141,17 @@ export default function Landing() {
       <footer className="max-w-3xl mx-auto px-4 py-8 text-center">
         <p className="text-xs text-gray-400">{t("landing.footer")}</p>
         <p className="text-[11px] text-gray-300 mt-1">
-          {t("app.name")} — {t("app.tagline")}
+          {t("app.name")} – {t("app.tagline")}
         </p>
+        <a
+          href="https://github.com/slenv"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-full bg-white border border-gray-100 shadow-sm text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:text-accent transition-colors"
+        >
+          <Code2 className="w-4 h-4" />
+          {t("landing.developedBy")} Lino Palomino
+        </a>
       </footer>
     </div>
   );
