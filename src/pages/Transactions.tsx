@@ -24,7 +24,7 @@ import {
 import { format } from "date-fns";
 import { es as esLocale } from "date-fns/locale";
 import { fromRange, periodRange, type Period } from "@/lib/period";
-import { getShareScope, getUserOwners, getMyAccountIds, spaceScopeFilter, type SpaceOwnerSummary } from "@/lib/shared";
+import { getShareScope, getUserOwners, type SpaceOwnerSummary } from "@/lib/shared";
 import { formatTime12 } from "@/lib/time";
 import {
   ArrowDownLeft,
@@ -213,16 +213,13 @@ export default function Transactions() {
           (m) => m.user_id !== profile?.id,
         );
         setHasOtherMembers(hasOtherMembers);
-        const myAccountIds = await getMyAccountIds(profile?.id);
-        const scopeFilter = spaceScopeFilter({ scopeIds, myAccountIds, hasOtherMembers });
         let query = supabase
           .from("transactions")
           .select(
             "*, profiles(name, color, avatar_url), categories(name, color, type), accounts!transactions_account_id_fkey(id, user_id, name, icon, color, type), to_accounts: accounts!transactions_to_account_id_fkey(id, user_id, name, icon, color, type)",
           )
+          .in("space_id", scopeIds)
           .order("date", { ascending: false });
-        if (scopeFilter) query = query.or(scopeFilter);
-        else query = query.in("space_id", scopeIds);
 
         if (filters.from) query = query.gte("date", filters.from);
         if (filters.to) query = query.lte("date", filters.to);

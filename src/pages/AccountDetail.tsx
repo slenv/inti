@@ -1,7 +1,7 @@
 import EmptyState from "@/components/EmptyState";
 import UserBubble from "@/components/UserBubble";
 import { useTranslation } from "@/lib/i18n";
-import { getShareScope, getUserOwners, getMyAccountIds, type SpaceOwnerSummary } from "@/lib/shared";
+import { getShareScope, getUserOwners, type SpaceOwnerSummary } from "@/lib/shared";
 import { sessionData } from "@/lib/sessionState";
 import { supabase } from "@/lib/supabase";
 import { useAppStore } from "@/store/useAppStore";
@@ -55,19 +55,6 @@ export default function AccountDetail() {
         setLoading(true);
       }
       const { scope: spaceScope } = await getShareScope(spaceId);
-      const membersRes = await supabase
-        .from("space_members")
-        .select("user_id")
-        .eq("space_id", spaceId);
-      const hasOtherMembers = (membersRes.data ?? []).some(
-        (m) => m.user_id !== profile?.id,
-      );
-      const mine = await getMyAccountIds(profile?.id);
-      const accCond = `or(account_id.eq.${accountId},to_account_id.eq.${accountId})`;
-      const orFilter =
-        !hasOtherMembers && mine.length > 0
-          ? `and(or(space_id.in.(${spaceScope.join(',')}),account_id.in.(${mine.join(',')}),to_account_id.in.(${mine.join(',')})),${accCond})`
-          : accCond;
       const [accRes, txRes, ownersMap] = await Promise.all([
         supabase
           .from("accounts")
@@ -77,7 +64,8 @@ export default function AccountDetail() {
           .select(
             "*, profiles(name, color, avatar_url), categories(name, color, type, user_id), accounts!transactions_account_id_fkey(id, user_id, name, icon, color, type), to_accounts: accounts!transactions_to_account_id_fkey(id, user_id, name, icon, color, type)",
           )
-          .or(orFilter)
+          .in("space_id", spaceScope)
+          .or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`)
           .order("date", { ascending: false }),
         getUserOwners(),
       ]);

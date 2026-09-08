@@ -24,8 +24,6 @@ import {
   getShareScope,
   getUserOwners,
   groupByUser,
-  getMyAccountIds,
-  spaceScopeFilter,
   type SpaceOwnerSummary,
 } from "@/lib/shared";
 import { computeFlowTotals } from "@/lib/flow";
@@ -218,38 +216,33 @@ export default function Dashboard() {
         setScope(scopeIds);
         const allowedSet = new Set(allowedIds);
         setAllowedAccounts(allowedSet);
-        const [membersRes] = await Promise.all([
-          supabase
-            .from("space_members")
-            .select("user_id")
-            .eq("space_id", spaceId),
-        ]);
-        const hasOtherMembers = (membersRes.data ?? []).some(
-          (m) => m.user_id !== profile?.id,
-        );
-        const myAccountIds = await getMyAccountIds(profile?.id);
-        const scopeFilter = spaceScopeFilter({ scopeIds, myAccountIds, hasOtherMembers });
         let query = supabase
           .from("transactions")
           .select(
             "*, profiles(name, color, avatar_url), categories(name, color, type, user_id), accounts!transactions_account_id_fkey(id, user_id, name, icon, color, type), to_accounts: accounts!transactions_to_account_id_fkey(id, user_id, name, icon, color, type)",
           )
+          .in("space_id", scopeIds)
           .order("date", { ascending: false });
-        if (scopeFilter) query = query.or(scopeFilter);
-        else query = query.in("space_id", scopeIds);
         if (from) query = query.gte("date", from);
         if (to) query = query.lte("date", to);
-        const [txRes, accRes, ownersMap] = await Promise.all([
+        const [txRes, accRes, ownersMap, membersRes] = await Promise.all([
           query,
           supabase
             .from("accounts")
             .select("id, user_id, name, icon, color, type")
             .order("created_at"),
           getUserOwners(),
+          supabase
+            .from("space_members")
+            .select("user_id")
+            .eq("space_id", spaceId),
         ]);
         if (txRes.error) setFetchError(t("dashboard.loadError"));
         else setFetchError(null);
         const txData = txRes.data ?? [];
+        const hasOtherMembers = (membersRes.data ?? []).some(
+          (m) => m.user_id !== profile?.id,
+        );
         const filteredData =
           hasOtherMembers && allowedSet.size
             ? txData.filter(
