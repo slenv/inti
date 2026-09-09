@@ -10,6 +10,7 @@ export default {
   'common.back': 'Back',
   'common.cancel': 'Cancel',
   'common.save': 'Save',
+  'common.update': 'Update',
   'common.icon': 'Icon',
   'common.color': 'Color',
   'common.delete': 'Delete',
@@ -149,6 +150,8 @@ export default {
   'transactions.exportError': 'Could not generate the file.',
   'transactions.detailOwner': 'Recorded by',
   'transactions.detailTransfer': 'Transfer between accounts',
+  'transactions.betweenOwnAccounts': 'Between your accounts',
+  'transactions.betweenOwnAccountsOf': 'Between their accounts',
   'transactions.detailDate': 'Date',
   'transactions.photos': 'Photos',
   'transactions.detailNotFound': 'This transaction is no longer available',
@@ -178,6 +181,8 @@ export default {
 
   // Add Transaction
   'add.title': 'New transaction',
+  'add.editTitle': 'Edit transaction',
+  'add.notFound': 'Transaction not found',
   'add.space': 'Space',
   'add.noSpaces': 'No spaces available',
   'add.expense': 'Expense',

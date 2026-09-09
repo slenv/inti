@@ -42,6 +42,7 @@ const Password = lazy(() => import('@/pages/Password'))
 const Install = lazy(() => import('@/pages/Install'))
 const AccountDetail = lazy(() => import('@/pages/AccountDetail'))
 const TypeDetail = lazy(() => import('@/pages/TypeDetail'))
+const CategoryDetail = lazy(() => import('@/pages/CategoryDetail'))
 
 function RouteFallback() {
   useEffect(() => {
@@ -189,6 +190,7 @@ export default function App() {
               <Route path="accounts" element={<Accounts />} />
               <Route path="account-detail" element={<AccountDetail />} />
               <Route path="type-detail" element={<TypeDetail />} />
+              <Route path="category-detail" element={<CategoryDetail />} />
               <Route path="categories" element={<Categories />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

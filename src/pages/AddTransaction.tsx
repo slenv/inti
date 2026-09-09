@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Calendar, ChevronRight, FileText, Tag, X } from 'lucide-react'
+import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
 import { useAppStore } from '@/store/useAppStore'
 import { useTranslation } from '@/lib/i18n'
@@ -44,6 +45,8 @@ const uid = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID(
 export default function AddTransaction() {
   const { t, locale } = useTranslation()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const editId = searchParams.get('edit') ?? ''
   const { profile, activeSpaceId, getActiveSpace, spaces } = useAppStore()
   const [spaceId, setSpaceId] = useState<string>(activeSpaceId ?? '')
   const [txType, setTxType] = useState<TxType>('expense')
@@ -65,7 +68,11 @@ export default function AddTransaction() {
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [photos, setPhotos] = useState<PhotoDraft[]>([])
+  const [existingPhotos, setExistingPhotos] = useState<string[]>([])
+  const [removedPhotos, setRemovedPhotos] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(!!editId)
+  const [notFound, setNotFound] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [photoViewer, setPhotoViewer] = useState<number | null>(null)
 
@@ -96,6 +103,7 @@ export default function AddTransaction() {
   }, [spaces, profile?.id])
 
   useEffect(() => {
+    if (editId) return
     if (activeSpaceId && personalSpaces.some((s) => s.id === activeSpaceId)) {
       setSpaceId(activeSpaceId)
     } else if (personalSpaces.length > 0 && !personalSpaces.some((s) => s.id === spaceId)) {
@@ -112,6 +120,38 @@ export default function AddTransaction() {
     if (cat) setCategoryId(cat)
     if (acc) setAccountId(acc)
   }, [])
+
+  useEffect(() => {
+    if (!editId || !profile) return
+    setLoading(true)
+    supabase
+      .from('transactions')
+      .select('*')
+      .eq('id', editId)
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          setNotFound(true)
+          setLoading(false)
+          return
+        }
+        const tx = data as any
+        setSpaceId(tx.space_id ?? '')
+        setTxType((tx.type as TxType) || 'expense')
+        setAmount(String(tx.amount ?? ''))
+        setDescription(tx.description ?? '')
+        setCategoryId(tx.category_id ?? '')
+        setAccountId(tx.account_id ?? '')
+        setToAccountId(tx.to_account_id ?? '')
+        setDate(format(new Date(tx.date), 'yyyy-MM-dd'))
+        setTime(format(new Date(tx.date), 'HH:mm'))
+        setExistingPhotos(Array.isArray(tx.photo_urls) ? tx.photo_urls : [])
+        setRemovedPhotos([])
+        setPhotos([])
+        setError(null)
+        setLoading(false)
+      })
+  }, [editId, profile?.id])
 
   useEffect(() => {
     if (!activeSpaceId || !profile) return
@@ -197,7 +237,7 @@ export default function AddTransaction() {
       .filter(([uid]) => uid !== profile?.id)
       .sort(([, a], [, b]) => a.name.localeCompare(b.name))
       .flatMap(([uid, owner]) => {
-        const items = allAccounts.filter((a) => a.user_id === uid && a.id !== accountId && allowedAccounts.has(a.id))
+        const items = allAccounts.filter((a) => a.user_id === uid && a.id !== accountId && (allowedAccounts.has(a.id) || a.id === toAccountId))
         if (items.length === 0) return []
         return [{
           key: uid,
@@ -213,7 +253,7 @@ export default function AddTransaction() {
   ]
 
   async function createCategory(name: string, opts?: { icon?: string | null; color?: string }): Promise<PickerItem | null> {
-    if (!activeSpaceId) return null
+    if (!spaceId && !activeSpaceId) return null
     const trimmed = name.trim()
     if (!trimmed) return null
     const { data, error } = await supabase.from('categories').insert({
@@ -229,7 +269,7 @@ export default function AddTransaction() {
   }
 
   async function createAccount(name: string, opts?: { icon?: string | null; color?: string }): Promise<PickerItem | null> {
-    if (!activeSpaceId) return null
+    if (!spaceId && !activeSpaceId) return null
     const trimmed = name.trim()
     if (!trimmed) return null
     const { data, error } = await supabase.from('accounts').insert({
@@ -245,7 +285,7 @@ export default function AddTransaction() {
   }
 
   function addPhotos(files: File[]) {
-    const free = MAX_PHOTOS - photos.length
+    const free = MAX_PHOTOS - (existingPhotos.length - removedPhotos.length + photos.length)
     if (free <= 0) return
     const picked = files.slice(0, free)
     setPhotos((prev) => [
@@ -260,6 +300,14 @@ export default function AddTransaction() {
       if (target) URL.revokeObjectURL(target.preview)
       return prev.filter((p) => p.id !== id)
     })
+  }
+
+  function removeExistingPhoto(url: string) {
+    setRemovedPhotos((prev) => [...prev, url])
+  }
+
+  function restoreExistingPhoto(url: string) {
+    setRemovedPhotos((prev) => prev.filter((u) => u !== url))
   }
 
   function handlePickerSelect(id: string) {
@@ -281,9 +329,7 @@ export default function AddTransaction() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    const targetSpaceId = personalSpaces.some((s) => s.id === spaceId)
-      ? spaceId
-      : personalSpaces[0]?.id ?? ''
+    const targetSpaceId = editId ? spaceId : (personalSpaces.some((s) => s.id === spaceId) ? spaceId : personalSpaces[0]?.id ?? '')
     if (!targetSpaceId || !profile) return
     const parsed = parseFloat(amount)
     if (!parsed || parsed <= 0) {
@@ -307,18 +353,23 @@ export default function AddTransaction() {
     setError(null)
     const uploaded: string[] = []
     try {
+      const keptExisting = existingPhotos.filter((u) => !removedPhotos.includes(u))
+      if (editId && removedPhotos.length > 0) {
+        const paths = removedPhotos.map((url) => url.split('/transaction-photos/')[1]).filter(Boolean)
+        if (paths.length > 0) supabase.storage.from('transaction-photos').remove(paths)
+      }
       for (let i = 0; i < photos.length; i++) {
         uploaded.push(await uploadPhoto(photos[i].file, i, targetSpaceId, profile.id))
       }
       const payload: Record<string, unknown> = {
         space_id: targetSpaceId,
-        user_id: profile.id,
         amount: parsed,
         type: txType,
         description: description.trim() || null,
         date: new Date(`${date}T${time}:00`).toISOString(),
-        photo_urls: uploaded,
+        photo_urls: [...keptExisting, ...uploaded],
       }
+      if (!editId) payload.user_id = profile.id
       if (txType === 'transfer') {
         payload.account_id = accountId
         payload.to_account_id = toAccountId
@@ -328,9 +379,17 @@ export default function AddTransaction() {
         payload.category_id = categoryId || null
         payload.to_account_id = null
       }
-      const { error: insErr } = await supabase.from('transactions').insert(payload)
-      if (insErr) throw insErr
-      navigate('/transactions')
+      if (editId) {
+        const { error: updErr } = await supabase.from('transactions').update(payload).eq('id', editId)
+        if (updErr) throw updErr
+        navigate(-1)
+      } else {
+        if (uploaded.length > 0) payload.photo_urls = uploaded
+        else delete payload.photo_urls
+        const { error: insErr } = await supabase.from('transactions').insert(payload)
+        if (insErr) throw insErr
+        navigate('/transactions')
+      }
     } catch (err: any) {
       if (uploaded.length > 0) {
         const paths = uploaded.map((url) => url.split('/transaction-photos/')[1]).filter(Boolean)
@@ -344,9 +403,38 @@ export default function AddTransaction() {
 
   if (!activeSpaceId || !profile) return null
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <span className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (notFound) {
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate(-1)} className="p-2 rounded-xl hover:bg-gray-100 transition-colors dark:hover:bg-white/10">
+            <ArrowLeft className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+          </button>
+          <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">{t('add.title')}</h1>
+        </div>
+        <div className="bg-white dark:bg-night-card rounded-2xl shadow-sm p-8 flex flex-col items-center justify-center gap-3">
+          <FileText className="w-8 h-8 text-gray-300 dark:text-gray-600" />
+          <p className="text-sm text-gray-500">{t('add.notFound')}</p>
+        </div>
+      </div>
+    )
+  }
+
+  const keptExistingPhotos = existingPhotos.filter((u) => !removedPhotos.includes(u))
+  const photoCount = keptExistingPhotos.length + photos.length
+  const allViewablePhotos = [...keptExistingPhotos, ...photos.map((p) => p.preview)]
+
   const selectedCategory = filteredCategories.find((c) => c.id === categoryId)
-  const selectedAccount = accounts.find((a) => a.id === accountId)
-  const selectedToAccount = allAccounts.find((a) => a.id === toAccountId)
+  const selectedAccount = accounts.find((a) => a.id === accountId) ?? allAccounts.find((a) => a.id === accountId)
+  const selectedToAccount = allAccounts.find((a) => a.id === toAccountId) ?? accounts.find((a) => a.id === toAccountId)
 
   const categoryTile = (c?: Category | null) =>
     c?.icon ? (
@@ -399,7 +487,7 @@ export default function AddTransaction() {
         <button onClick={() => navigate(-1)} className="p-2 rounded-xl hover:bg-gray-100 transition-colors dark:hover:bg-white/10">
           <ArrowLeft className="w-5 h-5 text-gray-500 dark:text-gray-400" />
         </button>
-        <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">{t('add.title')}</h1>
+        <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">{editId ? t('add.editTitle') : t('add.title')}</h1>
       </div>
 
       <div className="grid grid-cols-3 bg-gray-100 dark:bg-white/10 rounded-xl p-1 gap-1">
@@ -410,8 +498,7 @@ export default function AddTransaction() {
             onClick={() => {
               setTxType(opt.key)
               setError(null)
-              if (opt.key === 'transfer') setCategoryId('')
-              else setToAccountId('')
+              if (opt.key !== 'transfer') setToAccountId('')
             }}
             className={`py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 ${
               txType === opt.key ? opt.activeClass : 'text-gray-500 dark:text-gray-400'
@@ -429,7 +516,7 @@ export default function AddTransaction() {
           </div>
         )}
 
-        {personalSpaces.length > 1 && (
+        {!editId && personalSpaces.length > 1 && (
           <PickerRow
             icon={spaceTile()}
             label={t('add.space')}
@@ -510,15 +597,48 @@ export default function AddTransaction() {
         <div>
           <p className="text-xs text-gray-400 mb-2 flex items-center justify-between">
             <span>{t('add.photos')}</span>
-            <span className="text-[11px]">{photos.length}/{MAX_PHOTOS}</span>
+            <span className="text-[11px]">{photoCount}/{MAX_PHOTOS}</span>
           </p>
-          {photos.length > 0 && (
+          {photoCount > 0 && (
             <div className="grid grid-cols-3 gap-2.5 mb-2.5">
-              {photos.map((p) => (
+              {keptExistingPhotos.map((url) => (
+                <SwipeableRow key={url} className="rounded-2xl" plain onDelete={() => removeExistingPhoto(url)}>
+                  <div className="relative aspect-square rounded-2xl overflow-hidden shadow-sm ring-1 ring-gray-100 dark:ring-white/10 group cursor-pointer">
+                    <img
+                      src={url}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      onClick={() => setPhotoViewer(allViewablePhotos.indexOf(url))}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeExistingPhoto(url)}
+                      aria-label="remove photo"
+                      className="show-on-hover absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/55 text-white hover:bg-black/80 backdrop-blur-sm"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </SwipeableRow>
+              ))}
+              {removedPhotos.map((url) => (
+                <div key={url} className="relative aspect-square rounded-2xl overflow-hidden border border-expense/40 opacity-50 shadow-inner">
+                  <img src={url} alt="" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => restoreExistingPhoto(url)}
+                    aria-label="restore photo"
+                    className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/45 text-white text-[11px] font-semibold"
+                  >
+                    <span className="px-2 py-1 rounded-full bg-white/20 backdrop-blur-sm">{t('common.undo')}</span>
+                  </button>
+                </div>
+              ))}
+              {photos.map((p, i) => (
                 <SwipeableRow key={p.id} className="rounded-2xl" plain onDelete={() => removePhoto(p.id)}>
                   <div
                     className="relative aspect-square rounded-2xl overflow-hidden shadow-sm ring-1 ring-gray-100 dark:ring-white/10 cursor-pointer"
-                    onClick={() => setPhotoViewer(photos.findIndex((x) => x.id === p.id))}
+                    onClick={() => setPhotoViewer(keptExistingPhotos.length + i)}
                   >
                     <img src={p.preview} alt="" className="w-full h-full object-cover" />
                     <button
@@ -536,7 +656,7 @@ export default function AddTransaction() {
           )}
           <PhotoAddButton
             onAdd={addPhotos}
-            disabled={photos.length >= MAX_PHOTOS || saving}
+            disabled={photoCount >= MAX_PHOTOS || saving}
             label={t('add.addPhotos')}
           />
           <p className="text-[11px] text-gray-400 mt-1.5">{t('add.photosHint')}</p>
@@ -547,7 +667,7 @@ export default function AddTransaction() {
           disabled={saving}
           className={txType === 'expense' ? 'btn-danger' : txType === 'income' ? 'bg-income hover:bg-green-700 text-white w-full py-3 rounded-xl font-semibold text-sm transition-all duration-150 disabled:opacity-50 shadow-md shadow-income/25 active:scale-[0.98]' : 'bg-accent hover:bg-accent-hover text-white w-full py-3 rounded-xl font-semibold text-sm transition-all duration-150 disabled:opacity-50 shadow-md shadow-accent/25 active:scale-[0.98]'}
         >
-          {saving ? t('common.saving') : t('add.save')}
+          {saving ? t('common.saving') : editId ? t('common.update') : t('add.save')}
         </button>
       </form>
 
@@ -605,8 +725,8 @@ export default function AddTransaction() {
       />
 
       <PhotoLightbox
-        photos={photos.map((p) => p.preview)}
-        open={photoViewer !== null && photos.length > 0}
+        photos={allViewablePhotos}
+        open={photoViewer !== null && allViewablePhotos.length > 0}
         initialIndex={photoViewer ?? 0}
         onClose={() => setPhotoViewer(null)}
       />

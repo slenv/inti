@@ -23,13 +23,28 @@ type DonutEntry = {
   owner: { name: string; color: string; avatar_url: string | null } | null
 }
 
-export function CategoryDonut({ data, currency, showOwners = false }: { data: DonutEntry[]; currency: string; showOwners?: boolean }) {
+export function CategoryDonut({ data, currency, showOwners = false, onSelect }: { data: DonutEntry[]; currency: string; showOwners?: boolean; onSelect?: (categoryId: string) => void }) {
+  const handleSelect = (id: string) => {
+    if (onSelect) onSelect(id)
+  }
   return (
     <div className="flex items-center gap-4">
       <div className="w-36 h-36">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie data={data} dataKey="value" cx="50%" cy="50%" innerRadius={28} outerRadius={55} strokeWidth={2} stroke="#fff" isAnimationActive={false}>
+            <Pie
+              data={data}
+              dataKey="value"
+              cx="50%"
+              cy="50%"
+              innerRadius={28}
+              outerRadius={55}
+              strokeWidth={2}
+              stroke="#fff"
+              isAnimationActive={false}
+              cursor={onSelect ? "pointer" : undefined}
+              onClick={(entry: any) => handleSelect(entry.id)}
+            >
               {data.map((entry, i) => (
                 <Cell key={i} fill={entry.color} />
               ))}
@@ -40,7 +55,13 @@ export function CategoryDonut({ data, currency, showOwners = false }: { data: Do
       </div>
       <div className="flex-1 space-y-2.5 max-h-44 overflow-y-auto pr-1 overscroll-contain">
         {data.map((item, i) => (
-          <div key={i} className="flex items-center gap-2">
+          <button
+            key={i}
+            type="button"
+            onClick={() => handleSelect(item.id)}
+            disabled={!onSelect}
+            className="flex items-center gap-2 w-full text-left disabled:cursor-default disabled:opacity-100"
+          >
             <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
             <div className="flex-1 min-w-0">
               <span className="text-xs text-gray-500 block truncate">{item.name}</span>
@@ -61,7 +82,7 @@ export function CategoryDonut({ data, currency, showOwners = false }: { data: Do
               )}
             </div>
             <span className="text-xs font-semibold text-gray-700 shrink-0">{formatCurrency(item.value, currency)}</span>
-          </div>
+          </button>
         ))}
       </div>
     </div>

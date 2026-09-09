@@ -1,5 +1,10 @@
 import { supabase } from '@/lib/supabase'
 
+export function parseDayKey(key: string): Date {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
 export interface ShareScope {
   scope: string[]
   allowedAccounts: string[]

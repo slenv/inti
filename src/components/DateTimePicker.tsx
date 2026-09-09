@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Calendar, Clock, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Check } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
+import { useLockBodyScroll } from '@/lib/useLockBodyScroll'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
@@ -14,6 +15,7 @@ interface Props {
 
 export default function DateTimePicker({ open, setOpen, date, time, onConfirm }: Props) {
   const { t, locale } = useTranslation()
+  useLockBodyScroll(open, () => setOpen(false))
   const [viewYear, setViewYear] = useState(2026)
   const [viewMonth, setViewMonth] = useState(0)
   const [draftDate, setDraftDate] = useState('')

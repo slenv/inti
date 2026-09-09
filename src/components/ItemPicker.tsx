@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { Search, Plus, X, Loader2 } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
+import { useLockBodyScroll } from '@/lib/useLockBodyScroll'
 import { COLORS } from '@/types/database'
 import IconPicker from '@/components/IconPicker'
 import ColorPicker from '@/components/ColorPicker'
@@ -38,6 +39,7 @@ interface Props {
 }
 
 export default function ItemPicker({ open, title, searchPlaceholder, addLabel, newNamePlaceholder, emptyText, items, groups, onSelect, onCreate, onClose }: Props) {
+  useLockBodyScroll(open, onClose)
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [creating, setCreating] = useState(false)

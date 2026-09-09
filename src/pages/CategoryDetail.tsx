@@ -1,6 +1,7 @@
 import EmptyState from "@/components/EmptyState";
 import SwipeableRow from "@/components/SwipeableRow";
 import UserBubble from "@/components/UserBubble";
+import { IconTile } from "@/components/IconPicker";
 import { useTranslation } from "@/lib/i18n";
 import { useLockBodyScroll } from "@/lib/useLockBodyScroll";
 import {
@@ -8,6 +9,7 @@ import {
   getUserOwners,
   getMyAccountIds,
   parseDayKey,
+  spaceScopeFilter,
   type SpaceOwnerSummary,
 } from "@/lib/shared";
 import { sessionData } from "@/lib/sessionState";
@@ -16,47 +18,47 @@ import { useAppStore } from "@/store/useAppStore";
 import { formatCurrency } from "@/types/database";
 import { format } from "date-fns";
 import { es as esLocale } from "date-fns/locale";
-import { ArrowLeft, ChevronRight, Wallet } from "lucide-react";
+import { ArrowLeft, ChevronRight, Tag } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AccountMiniIcon, TransactionRow } from "./Dashboard";
+import { TransactionRow } from "./Dashboard";
 import TransactionDetailModal from "./TransactionDetail";
 
-interface AccountDetailCache {
-  account: any;
+interface CategoryDetailCache {
+  category: any;
   transactions: any[];
   accounts: any[];
   owner: any;
   owners: Map<string, SpaceOwnerSummary>;
 }
 
-export default function AccountDetail() {
+export default function CategoryDetail() {
   const { t, locale } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const accountId = searchParams.get("id") ?? "";
+  const categoryId = searchParams.get("categoryId") ?? "";
   const { activeSpaceId, spaces, profile } = useAppStore();
   const space = useAppStore((s) => s.getActiveSpace());
   const currency = space?.currency ?? "PEN";
 
-  const cached = sessionData.get<AccountDetailCache>(`account-detail:${accountId}`);
-  const [account, setAccount] = useState<any>(cached?.account ?? null);
+  const cached = sessionData.get<CategoryDetailCache>(`category-detail:${categoryId}`);
+  const [category, setCategory] = useState<any>(cached?.category ?? null);
   const [transactions, setTransactions] = useState<any[]>(cached?.transactions ?? []);
   const [accounts, setAccounts] = useState<any[]>(cached?.accounts ?? []);
   const [owner, setOwner] = useState<any>(cached?.owner ?? null);
   const [owners, setOwners] = useState<Map<string, SpaceOwnerSummary>>(cached?.owners ?? new Map());
-  const [loading, setLoading] = useState(!cached && !!accountId);
+  const [loading, setLoading] = useState(!cached && !!categoryId);
   const [detailTx, setDetailTx] = useState<any | null>(null);
-  const isAccountOwner = !!account?.user_id && account.user_id === profile?.id;
+  const isCategoryOwner = !!category?.user_id && category.user_id === profile?.id;
 
   useEffect(() => {
-    if (!accountId || !activeSpaceId) return;
+    if (!categoryId || !activeSpaceId) return;
     const spaceId = activeSpaceId;
 
     async function load() {
-      const existing = sessionData.get<AccountDetailCache>(`account-detail:${accountId}`);
+      const existing = sessionData.get<CategoryDetailCache>(`category-detail:${categoryId}`);
       if (existing) {
-        setAccount(existing.account);
+        setCategory(existing.category);
         setTransactions(existing.transactions);
         setAccounts(existing.accounts);
         setOwner(existing.owner);
@@ -65,7 +67,7 @@ export default function AccountDetail() {
       } else {
         setLoading(true);
       }
-      const { scope: spaceScope } = await getShareScope(spaceId);
+      const { scope: scopeIds } = await getShareScope(spaceId);
       const membersRes = await supabase
         .from("space_members")
         .select("user_id")
@@ -74,61 +76,51 @@ export default function AccountDetail() {
         (m) => m.user_id !== profile?.id,
       );
       const mine = await getMyAccountIds(profile?.id);
-      const accCond = `or(account_id.eq.${accountId},to_account_id.eq.${accountId})`;
-      const orFilter =
-        !hasOtherMembers && mine.length > 0
-          ? `and(or(space_id.in.(${spaceScope.join(',')}),account_id.in.(${mine.join(',')}),to_account_id.in.(${mine.join(',')})),${accCond})`
-          : accCond;
-      const [accRes, txRes, ownersMap] = await Promise.all([
+      const scopeFilter = spaceScopeFilter({ scopeIds, myAccountIds: mine, hasOtherMembers });
+
+      let query = supabase
+        .from("transactions")
+        .select(
+          "*, profiles(name, color, avatar_url), categories(name, color, type, user_id), accounts!transactions_account_id_fkey(id, user_id, name, icon, color, type), to_accounts: accounts!transactions_to_account_id_fkey(id, user_id, name, icon, color, type)",
+        )
+        .eq("category_id", categoryId)
+        .order("date", { ascending: false });
+      if (scopeFilter) query = query.or(scopeFilter);
+      else query = query.in("space_id", scopeIds);
+
+      const [catRes, txRes, allAccounts, ownersMap] = await Promise.all([
+        supabase.from("categories").select("*").eq("id", categoryId).single(),
+        query,
         supabase
           .from("accounts")
           .select("id, user_id, name, icon, color, type"),
-        supabase
-          .from("transactions")
-          .select(
-            "*, profiles(name, color, avatar_url), categories(name, color, type, user_id), accounts!transactions_account_id_fkey(id, user_id, name, icon, color, type), to_accounts: accounts!transactions_to_account_id_fkey(id, user_id, name, icon, color, type)",
-          )
-          .or(orFilter)
-          .order("date", { ascending: false }),
         getUserOwners(),
       ]);
 
-      const allAccounts = accRes.data ?? [];
-      const acc = allAccounts.find((a: any) => a.id === accountId);
+      const cat = catRes.data ?? null;
       const txData = txRes.data ?? [];
-      const ownerData = acc ? ownersMap.get(acc.user_id) : undefined;
-      setAccount(acc ?? null);
-      setAccounts(allAccounts);
+      const ownerData = cat ? ownersMap.get(cat.user_id) : undefined;
+      setCategory(cat);
+      setTransactions(txData);
+      setAccounts(allAccounts.data ?? []);
       setOwner(ownerData);
       setOwners(ownersMap);
-      setTransactions(txData);
-      sessionData.set(`account-detail:${accountId}`, {
-        account: acc ?? null,
+      sessionData.set(`category-detail:${categoryId}`, {
+        category: cat,
         transactions: txData,
-        accounts: allAccounts,
+        accounts: allAccounts.data ?? [],
         owner: ownerData,
         owners: ownersMap,
       });
       setLoading(false);
     }
     load();
-  }, [accountId, activeSpaceId]);
+  }, [categoryId, activeSpaceId]);
 
-  const balance = useMemo(() => {
-    let sum = 0;
-    transactions.forEach((tx) => {
-      const amt = Number(tx.amount) || 0;
-      if (tx.type === "transfer") {
-        if (tx.account_id === accountId) sum -= amt;
-        if (tx.to_account_id === accountId) sum += amt;
-      } else if (tx.type === "income") {
-        if (tx.account_id === accountId) sum += amt;
-      } else if (tx.account_id === accountId) {
-        sum -= amt;
-      }
-    });
-    return sum;
-  }, [transactions, accountId]);
+  const total = useMemo(
+    () => transactions.reduce((s, tx) => s + Number(tx.amount), 0),
+    [transactions],
+  );
 
   const groups = useMemo(() => {
     const map = new Map<string, any[]>();
@@ -151,7 +143,7 @@ export default function AccountDetail() {
     if (!confirm(t("transactions.deleteConfirm"))) return;
     const { error } = await supabase.from("transactions").delete().eq("id", id);
     if (error) {
-      console.error("[account-detail] delete", error);
+      console.error("[category-detail] delete", error);
       alert(t("transactions.deleteError"));
       return;
     }
@@ -166,7 +158,7 @@ export default function AccountDetail() {
       </div>
     );
 
-  if (!account)
+  if (!category)
     return (
       <div className="space-y-4">
         <button
@@ -176,7 +168,7 @@ export default function AccountDetail() {
           <ArrowLeft className="w-5 h-5 text-gray-500" />
         </button>
         <EmptyState
-          icon={Wallet}
+          icon={Tag}
           title={t("accountDetail.notFound")}
           description={t("accountDetail.notFoundDesc")}
           action={
@@ -203,10 +195,10 @@ export default function AccountDetail() {
           <ArrowLeft className="w-5 h-5 text-gray-500" />
         </button>
         <div className="flex items-center gap-2 min-w-0">
-          <AccountMiniIcon account={account} size={18} />
+          <IconTile icon={category.icon} color={category.color} />
           <div className="min-w-0">
             <h1 className="text-lg font-bold text-gray-800 truncate">
-              {account.name}
+              {category.name}
             </h1>
             {owner && (
               <div className="flex items-center gap-1">
@@ -220,16 +212,21 @@ export default function AccountDetail() {
         </div>
       </div>
 
-      <div className="bg-gradient-to-br from-accent to-accent-hover rounded-2xl p-5 text-white shadow-lg shadow-accent/30">
-        <p className="text-sm opacity-80 mb-1">{t("accountDetail.balance")}</p>
+      <div
+        className="rounded-2xl p-5 text-white shadow-lg"
+        style={{
+          background: `linear-gradient(135deg, ${category.color ?? "#8B72D4"} 0%, ${category.color ?? "#8B72D4"}99 100%)`,
+        }}
+      >
+        <p className="text-sm opacity-80 mb-1">{t("dashboard.expensesByCategory")}</p>
         <p className="text-2xl font-bold">
-          {formatCurrency(balance, currency)}
+          {formatCurrency(total, currency)}
         </p>
       </div>
 
       {groups.length === 0 ? (
         <EmptyState
-          icon={Wallet}
+          icon={Tag}
           title={t("accountDetail.noTransactions")}
           description={t("accountDetail.noTransactionsDesc")}
         />
@@ -263,7 +260,7 @@ export default function AccountDetail() {
                       <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
                     </div>
                   );
-                  return isAccountOwner ? (
+                  return isCategoryOwner ? (
                     <SwipeableRow
                       key={tx.id}
                       onEdit={() => navigate(`/add?edit=${tx.id}`)}
@@ -289,7 +286,7 @@ export default function AccountDetail() {
         currentUserId={profile?.id}
         currentProfile={profile}
         onEdit={
-          isAccountOwner && detailTx
+          isCategoryOwner && detailTx
             ? () => {
                 navigate(`/add?edit=${detailTx.id}`);
                 setDetailTx(null);
@@ -297,7 +294,7 @@ export default function AccountDetail() {
             : undefined
         }
         onDelete={
-          isAccountOwner && detailTx
+          isCategoryOwner && detailTx
             ? () => {
                 handleDeleteTx(detailTx.id);
                 setDetailTx(null);

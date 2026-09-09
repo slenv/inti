@@ -1,6 +1,7 @@
 import { useRef, useState, type ChangeEvent, type RefObject } from "react"
 import { Camera, ImagePlus, Images, X } from "lucide-react"
 import { useTranslation } from "@/lib/i18n"
+import { useLockBodyScroll } from "@/lib/useLockBodyScroll"
 
 export default function PhotoAddButton({
   onAdd,
@@ -13,6 +14,7 @@ export default function PhotoAddButton({
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  useLockBodyScroll(open, () => setOpen(false))
   const galleryRef = useRef<HTMLInputElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
 

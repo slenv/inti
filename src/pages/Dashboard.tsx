@@ -7,6 +7,7 @@ import { finishProgress, startProgress } from "@/components/TopProgress";
 import UserBubble from "@/components/UserBubble";
 import TransactionDetailModal from "./TransactionDetail";
 import { useTranslation } from "@/lib/i18n";
+import { useLockBodyScroll } from "@/lib/useLockBodyScroll";
 import {
   ACCOUNT_TYPE_ICONS,
   DEFAULT_COLOR,
@@ -96,6 +97,8 @@ export default function Dashboard() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [showBalanceConfig, setShowBalanceConfig] = useState(false);
   const [detailTx, setDetailTx] = useState<any | null>(null);
+  useLockBodyScroll(showBalanceConfig, () => setShowBalanceConfig(false));
+  useLockBodyScroll(!!detailTx, () => setDetailTx(null));
   const [excludedBySpace, setExcludedBySpace] = useState<Record<string, string[]>>({});
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [prefsError, setPrefsError] = useState(false);
@@ -610,6 +613,9 @@ export default function Dashboard() {
                 data={donutData}
                 currency={currency}
                 showOwners={isShared}
+                onSelect={(categoryId) =>
+                  navigate(`/category-detail?categoryId=${categoryId}`)
+                }
               />
             </Suspense>
           </ChartErrorBoundary>
@@ -677,13 +683,13 @@ export default function Dashboard() {
             </Link>
           </div>
         ) : (
-          <div className="space-y-0 bg-white dark:bg-night-card rounded-2xl shadow-sm border border-gray-50 dark:border-white/10 overflow-hidden">
+          <div className="divide-y divide-gray-50 dark:divide-white/10">
             {periodTx.slice(0, 5).map((tx) => {
               const isOwn = spaces.some((s) => s.id === tx.space_id);
               const row = (
                 <div
                   onClick={() => setDetailTx(tx)}
-                  className="flex items-center gap-2 px-4 py-3 border-b border-gray-50 dark:border-white/10 last:border-b-0 cursor-pointer active:scale-[0.99] transition-transform"
+                  className="flex items-center gap-3 px-1 py-2.5 cursor-pointer active:scale-[0.99] transition-transform"
                 >
                   <div className="flex-1 min-w-0">
                     <TransactionRow
@@ -701,10 +707,9 @@ export default function Dashboard() {
               return isOwn ? (
                 <SwipeableRow
                   key={tx.id}
+                  plain
                   onEdit={() => {
-                    navigate("/transactions", {
-                      state: { editTxId: tx.id },
-                    });
+                    navigate(`/add?edit=${tx.id}`);
                   }}
                   onDelete={() => handleDeleteTx(tx.id)}
                 >
@@ -803,12 +808,13 @@ export default function Dashboard() {
         tx={detailTx}
         currency={currency}
         onClose={() => setDetailTx(null)}
+        ownersById={ownersById}
+        currentUserId={profile?.id}
+        currentProfile={profile}
         onEdit={
           detailTx && spaces.some((s) => s.id === detailTx.space_id)
             ? () => {
-                navigate("/transactions", {
-                  state: { editTxId: detailTx.id },
-                });
+                navigate(`/add?edit=${detailTx.id}`);
                 setDetailTx(null);
               }
             : undefined
@@ -914,7 +920,7 @@ export function AccountMiniIcon({
   );
 }
 
-function OtherUserBadge({
+export function OtherUserBadge({
   owner,
   fallback,
 }: {

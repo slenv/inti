@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight, Minimize2, X, ZoomIn } from "lucide-react"
+import { useLockBodyScroll } from "@/lib/useLockBodyScroll"
 
 interface Drag {
   x: number
@@ -28,6 +29,7 @@ export default function PhotoLightbox({
   const [index, setIndex] = useState(initialIndex)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
+  useLockBodyScroll(open, onClose)
   const [drag, setDrag] = useState<Drag | null>(null)
   const [closing, setClosing] = useState(false)
   const areaRef = useRef<HTMLDivElement>(null)

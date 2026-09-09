@@ -10,6 +10,7 @@ export default {
   'common.back': 'Volver',
   'common.cancel': 'Cancelar',
   'common.save': 'Guardar',
+  'common.update': 'Actualizar',
   'common.icon': 'Icono',
   'common.color': 'Color',
   'common.delete': 'Eliminar',
@@ -147,6 +148,8 @@ export default {
   'transactions.exportError': 'No se pudo generar el archivo.',
   'transactions.detailOwner': 'Registrado por',
   'transactions.detailTransfer': 'Transferencia entre cuentas',
+  'transactions.betweenOwnAccounts': 'Entre tus cuentas',
+  'transactions.betweenOwnAccountsOf': 'Entre sus cuentas',
   'transactions.detailDate': 'Fecha',
   'transactions.photos': 'Fotos',
   'transactions.detailNotFound': 'Este movimiento ya no está disponible',
@@ -178,6 +181,8 @@ export default {
 
   // Add Transaction
   'add.title': 'Nuevo movimiento',
+  'add.editTitle': 'Editar movimiento',
+  'add.notFound': 'Movimiento no encontrado',
   'add.space': 'Espacio',
   'add.noSpaces': 'No hay espacios disponibles',
   'add.expense': 'Egreso',

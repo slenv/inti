@@ -3,7 +3,7 @@ import PeriodSelector from "@/components/PeriodSelector";
 import { useTranslation } from "@/lib/i18n";
 import { classifyFlow } from "@/lib/flow";
 import { fromRange, periodRange, type Period } from "@/lib/period";
-import { getShareScope, getUserOwners, getMyAccountIds, spaceScopeFilter, type SpaceOwnerSummary } from "@/lib/shared";
+import { getShareScope, getUserOwners, getMyAccountIds, parseDayKey, spaceScopeFilter, type SpaceOwnerSummary } from "@/lib/shared";
 import { sessionData } from "@/lib/sessionState";
 import { supabase } from "@/lib/supabase";
 import { useAppStore } from "@/store/useAppStore";
@@ -221,7 +221,7 @@ export default function TypeDetail() {
           {groups.map(([day, txs]) => (
             <div key={day}>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
-                {format(new Date(day), "EEEE d MMM", {
+                {format(parseDayKey(day), "EEEE d MMM", {
                   locale: locale === "es" ? esLocale : undefined,
                 })}
               </p>
